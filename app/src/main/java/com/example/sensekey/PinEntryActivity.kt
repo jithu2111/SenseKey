@@ -141,7 +141,8 @@ fun NumberPad(
     onDeleteClick: () -> Unit
 ) {
     Column(
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Rows 1-3 (numbers 1-9)
         for (row in 0..2) {
@@ -150,39 +151,70 @@ fun NumberPad(
             ) {
                 for (col in 1..3) {
                     val number = (row * 3 + col).toString()
-                    NumberButton(
-                        text = number,
+                    val label = when(number) {
+                        "2" -> "ABC"
+                        "3" -> "DEF"
+                        "4" -> "GHI"
+                        "5" -> "JKL"
+                        "6" -> "MNO"
+                        "7" -> "PQRS"
+                        "8" -> "TUV"
+                        "9" -> "WXYZ"
+                        else -> ""
+                    }
+                    RectangularNumberButton(
+                        number = number,
+                        label = label,
                         onClick = { onNumberClick(number) }
                     )
                 }
             }
         }
 
-        // Bottom row (0 and delete)
+        // Bottom row (delete, 0, enter)
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Empty space
-            Spacer(modifier = Modifier.size(80.dp))
-
-            // 0 button
-            NumberButton(
-                text = "0",
-                onClick = { onNumberClick("0") }
-            )
-
             // Delete button
             Button(
                 onClick = onDeleteClick,
-                modifier = Modifier.size(80.dp),
-                shape = CircleShape,
+                modifier = Modifier
+                    .width(100.dp)
+                    .height(56.dp),
+                shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             ) {
                 Text(
-                    text = "←",
+                    text = "⌫",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // 0 button
+            RectangularNumberButton(
+                number = "0",
+                label = "",
+                onClick = { onNumberClick("0") }
+            )
+
+            // Enter/Continue button
+            Button(
+                onClick = { },
+                modifier = Modifier
+                    .width(100.dp)
+                    .height(56.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            ) {
+                Text(
+                    text = "→",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -192,24 +224,40 @@ fun NumberPad(
 }
 
 @Composable
-fun NumberButton(
-    text: String,
+fun RectangularNumberButton(
+    number: String,
+    label: String,
     onClick: () -> Unit
 ) {
     Button(
         onClick = onClick,
-        modifier = Modifier.size(80.dp),
-        shape = CircleShape,
+        modifier = Modifier
+            .width(100.dp)
+            .height(56.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
         )
     ) {
-        Text(
-            text = text,
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
-        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = number,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            if (label.isNotEmpty()) {
+                Text(
+                    text = label,
+                    fontSize = 10.sp,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+            }
+        }
     }
 }
