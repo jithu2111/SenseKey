@@ -51,50 +51,54 @@ fun PinEntryScreen(onPinCorrect: () -> Unit) {
             .background(MaterialTheme.colorScheme.background)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // App Title
-        Text(
-            text = "SenseKey",
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Subtitle
-        Text(
-            text = "Enter PIN to continue",
-            fontSize = 16.sp,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-        )
-
-        Spacer(modifier = Modifier.height(48.dp))
-
-        // PIN Dots Display
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(bottom = 24.dp)
+        // Top Section: Title and PIN Display
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(top = 40.dp)
         ) {
-            repeat(PinConfig.PIN_LENGTH) { index ->
-                PinDot(filled = index < pin.length)
+            // App Title
+            Text(
+                text = "SenseKey",
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Subtitle
+            Text(
+                text = "Enter PIN to continue",
+                fontSize = 16.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            )
+
+            Spacer(modifier = Modifier.height(60.dp))
+
+            // PIN Dots Display
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                modifier = Modifier.padding(bottom = 16.dp)
+            ) {
+                repeat(PinConfig.PIN_LENGTH) { index ->
+                    PinDot(filled = index < pin.length)
+                }
+            }
+
+            // Error Message
+            if (errorMessage.isNotEmpty()) {
+                Text(
+                    text = errorMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
         }
 
-        // Error Message
-        if (errorMessage.isNotEmpty()) {
-            Text(
-                text = errorMessage,
-                color = MaterialTheme.colorScheme.error,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Number Pad
+        // Bottom Section: Number Pad
         NumberPad(
             onNumberClick = { number ->
                 if (pin.length < PinConfig.PIN_LENGTH) {
@@ -117,7 +121,8 @@ fun PinEntryScreen(onPinCorrect: () -> Unit) {
                     pin = pin.dropLast(1)
                     errorMessage = ""
                 }
-            }
+            },
+            modifier = Modifier.padding(bottom = 24.dp)
         )
     }
 }
@@ -126,7 +131,7 @@ fun PinEntryScreen(onPinCorrect: () -> Unit) {
 fun PinDot(filled: Boolean) {
     Box(
         modifier = Modifier
-            .size(20.dp)
+            .size(24.dp)
             .clip(CircleShape)
             .background(
                 if (filled) MaterialTheme.colorScheme.primary
@@ -138,16 +143,18 @@ fun PinDot(filled: Boolean) {
 @Composable
 fun NumberPad(
     onNumberClick: (String) -> Unit,
-    onDeleteClick: () -> Unit
+    onDeleteClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Column(
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Rows 1-3 (numbers 1-9)
         for (row in 0..2) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 for (col in 1..3) {
                     val number = (row * 3 + col).toString()
@@ -173,15 +180,15 @@ fun NumberPad(
 
         // Bottom row (delete, 0, enter)
         Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Delete button
             Button(
                 onClick = onDeleteClick,
                 modifier = Modifier
-                    .width(100.dp)
-                    .height(56.dp),
-                shape = RoundedCornerShape(8.dp),
+                    .width(105.dp)
+                    .height(64.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -201,24 +208,12 @@ fun NumberPad(
                 onClick = { onNumberClick("0") }
             )
 
-            // Enter/Continue button
-            Button(
-                onClick = { },
+            // Spacer button (invisible, maintains layout symmetry)
+            Box(
                 modifier = Modifier
-                    .width(100.dp)
-                    .height(56.dp),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                )
-            ) {
-                Text(
-                    text = "→",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+                    .width(105.dp)
+                    .height(64.dp)
+            )
         }
     }
 }
@@ -232,9 +227,9 @@ fun RectangularNumberButton(
     Button(
         onClick = onClick,
         modifier = Modifier
-            .width(100.dp)
-            .height(56.dp),
-        shape = RoundedCornerShape(8.dp),
+            .width(105.dp)
+            .height(64.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant
