@@ -19,16 +19,27 @@ class CSVExporter(private val context: Context) {
      * Export sensor data to CSV file
      * @param data List of sensor data to export
      * @param fileName Optional custom filename (default: auto-generated with timestamp)
+     * @param participantId Optional participant ID for filename
+     * @param trialNumber Optional trial number for filename
+     * @param targetPin Optional target PIN for filename
+     * @param isCorrect Optional flag to indicate if PIN was correct
      * @return File object if successful, null otherwise
      */
-    fun exportToCSV(data: List<SensorData>, fileName: String? = null): File? {
+    fun exportToCSV(
+        data: List<SensorData>,
+        fileName: String? = null,
+        participantId: String? = null,
+        trialNumber: Int? = null,
+        targetPin: String? = null,
+        isCorrect: Boolean? = null
+    ): File? {
         if (data.isEmpty()) {
             Log.w(TAG, "No data to export")
             return null
         }
 
         try {
-            val file = createCSVFile(fileName)
+            val file = createCSVFile(fileName, participantId, trialNumber, targetPin, isCorrect)
             FileWriter(file).use { writer ->
                 // Write header
                 writer.append(SensorData.getCsvHeader())
@@ -56,7 +67,13 @@ class CSVExporter(private val context: Context) {
     /**
      * Create CSV file in app's external storage
      */
-    private fun createCSVFile(customFileName: String?): File {
+    private fun createCSVFile(
+        customFileName: String?,
+        participantId: String?,
+        trialNumber: Int?,
+        targetPin: String?,
+        isCorrect: Boolean?
+    ): File {
         // Use app-specific external storage (doesn't require WRITE_EXTERNAL_STORAGE permission on Android 10+)
         val documentsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
             ?: throw IOException("External storage not available")
@@ -67,11 +84,24 @@ class CSVExporter(private val context: Context) {
             senseKeyDir.mkdirs()
         }
 
-        // Generate filename with timestamp if not provided
+        // Generate filename
         val fileName = customFileName ?: run {
             val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
             val timestamp = dateFormat.format(Date())
-            "sensekey_data_$timestamp.csv"
+
+            // If research mode parameters provided, use structured naming
+            if (participantId != null && trialNumber != null && targetPin != null) {
+                val trialStr = trialNumber.toString().padStart(2, '0')
+                val correctnessStr = when (isCorrect) {
+                    true -> "CORRECT"
+                    false -> "WRONG"
+                    null -> "UNKNOWN"
+                }
+                "participant_${participantId}_trial_${trialStr}_pin_${targetPin}_${correctnessStr}_$timestamp.csv"
+            } else {
+                // Fallback to timestamp-only naming
+                "sensekey_data_$timestamp.csv"
+            }
         }
 
         return File(senseKeyDir, fileName)

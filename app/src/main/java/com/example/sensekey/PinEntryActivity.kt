@@ -75,6 +75,8 @@ fun PinEntryScreen(
     csvExporter: CSVExporter,
     onPinCorrect: () -> Unit
 ) {
+    var participantId by remember { mutableStateOf("") }
+    var showParticipantInput by remember { mutableStateOf(true) }
     var pin by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
     var successMessage by remember { mutableStateOf("") }
@@ -93,6 +95,17 @@ fun PinEntryScreen(
                 delay(100) // Update every 100ms
             }
         }
+    }
+
+    // Show Participant ID input screen first
+    if (showParticipantInput) {
+        ParticipantIdInputScreen(
+            onContinue = { id ->
+                participantId = id
+                showParticipantInput = false
+            }
+        )
+        return
     }
 
     Column(
@@ -118,23 +131,43 @@ fun PinEntryScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Research Mode UI
+            // Participant ID display with edit button and Trial number
             if (PinConfig.RESEARCH_MODE) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Participant: $participantId",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    TextButton(
+                        onClick = { showParticipantInput = true },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                        modifier = Modifier.height(20.dp)
+                    ) {
+                        Text(
+                            text = "Edit",
+                            fontSize = 11.sp
+                        )
+                    }
+                    Text(
+                        text = "Trial #$trialNumber",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+            // Research Mode UI
                 // Target PIN Display
                 Text(
                     text = "Target PIN: ${PinConfig.getCurrentResearchPin()}",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.secondary
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Trial Counter
-                Text(
-                    text = "Trial #$trialNumber",
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -232,6 +265,11 @@ fun PinEntryScreen(
         // Bottom Section: Number Pad
         NumberPad(
             onNumberClick = { number ->
+                // Only allow PIN entry if recording and no success message
+                if (PinConfig.RESEARCH_MODE && !isRecording) {
+                    return@NumberPad  // Block input until recording starts
+                }
+
                 if (pin.length < PinConfig.PIN_LENGTH && !successMessage.isNotEmpty()) {
                     pin += number
                     errorMessage = ""
@@ -258,12 +296,29 @@ fun PinEntryScreen(
                                 isRecording = false
 
                                 // Export to CSV (save regardless of correctness)
-                                val file = csvExporter.exportToCSV(collectedData)
+                                val file = csvExporter.exportToCSV(
+                                    data = collectedData,
+                                    participantId = participantId,
+                                    trialNumber = trialNumber,
+                                    targetPin = PinConfig.getCurrentResearchPin(),
+                                    isCorrect = isCorrect
+                                )
 
                                 if (file != null) {
                                     val correctness = if (isCorrect) "✓" else "✗"
                                     successMessage = "Trial #$trialNumber saved! $correctness (${collectedData.size} samples)"
-                                    trialNumber++
+
+                                    // Only advance to next PIN and increment trial if correct
+                                    if (isCorrect) {
+                                        PinConfig.nextResearchPin()
+                                        trialNumber++
+
+                                        // Reset trial number after completing all 22 PINs
+                                        if (trialNumber > PinConfig.RESEARCH_PINS.size) {
+                                            trialNumber = 1
+                                        }
+                                    }
+                                    // If wrong, stay on same trial number and same PIN
 
                                     // Show success message for 2 seconds, then reset
                                     delay(2000)
@@ -363,8 +418,8 @@ fun NumberPad(
             Button(
                 onClick = onDeleteClick,
                 modifier = Modifier
-                    .width(105.dp)
-                    .height(64.dp),
+                    .width(95.dp)
+                    .height(72.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -388,8 +443,8 @@ fun NumberPad(
             // Spacer button (invisible, maintains layout symmetry)
             Box(
                 modifier = Modifier
-                    .width(105.dp)
-                    .height(64.dp)
+                    .width(95.dp)
+                    .height(72.dp)
             )
         }
     }
@@ -404,8 +459,8 @@ fun RectangularNumberButton(
     Button(
         onClick = onClick,
         modifier = Modifier
-            .width(105.dp)
-            .height(64.dp),
+            .width(95.dp)
+            .height(72.dp),
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -425,11 +480,129 @@ fun RectangularNumberButton(
             if (label.isNotEmpty()) {
                 Text(
                     text = label,
-                    fontSize = 10.sp,
+                    fontSize = 9.sp,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
             }
         }
+    }
+}
+
+@Composable
+fun ParticipantIdInputScreen(
+    onContinue: (String) -> Unit
+) {
+    var participantId by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // App Title
+        Text(
+            text = "SenseKey",
+            fontSize = 36.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Research Data Collection",
+            fontSize = 16.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+        )
+
+        Spacer(modifier = Modifier.height(48.dp))
+
+        // Input Field Label
+        Text(
+            text = "Enter Participant ID",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Text Input
+        OutlinedTextField(
+            value = participantId,
+            onValueChange = {
+                participantId = it
+                errorMessage = ""
+            },
+            label = { Text("Participant ID") },
+            placeholder = { Text("e.g., 001") },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline
+            )
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Helper Text
+        Text(
+            text = "Use format: 001, 002, 003... or names",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+        )
+
+        if (errorMessage.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = errorMessage,
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 14.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // Continue Button
+        Button(
+            onClick = {
+                if (participantId.isBlank()) {
+                    errorMessage = "Please enter a participant ID"
+                } else {
+                    onContinue(participantId.trim())
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .height(56.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary
+            )
+        ) {
+            Text(
+                text = "Start Data Collection",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Info text
+        Text(
+            text = "You'll collect data for 22 different PIN patterns",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+            textAlign = TextAlign.Center
+        )
     }
 }

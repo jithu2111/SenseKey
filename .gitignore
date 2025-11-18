@@ -43,3 +43,5 @@ local.properties
 
 # NDK
 obj/
+
+SenseKey_Data
