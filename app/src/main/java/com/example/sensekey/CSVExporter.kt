@@ -65,7 +65,7 @@ class CSVExporter(private val context: Context) {
     }
 
     /**
-     * Create CSV file in app's external storage
+     * Create CSV file in public Documents folder
      */
     private fun createCSVFile(
         customFileName: String?,
@@ -74,8 +74,8 @@ class CSVExporter(private val context: Context) {
         targetPin: String?,
         isCorrect: Boolean?
     ): File {
-        // Use app-specific external storage (doesn't require WRITE_EXTERNAL_STORAGE permission on Android 10+)
-        val documentsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+        // Use public Documents directory (persists after app uninstall)
+        val documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
             ?: throw IOException("External storage not available")
 
         // Create SenseKey directory if it doesn't exist
@@ -111,7 +111,7 @@ class CSVExporter(private val context: Context) {
      * Get the directory where CSV files are stored
      */
     fun getExportDirectory(): File? {
-        val documentsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+        val documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
             ?: return null
         return File(documentsDir, "SenseKey")
     }
