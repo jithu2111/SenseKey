@@ -32,6 +32,10 @@ class SensorDataCollector(context: Context) : SensorEventListener {
     private var recordingStartTime: Long = 0
     private val sensorDataBuffer = mutableListOf<SensorData>()
 
+    // Logging control to prevent redundant samples
+    private var lastLogTime: Long = 0
+    private val LOG_INTERVAL_MS = 5  // 200Hz effective sampling rate
+
     // Session information
     private var currentSessionId: String = ""
     private var currentTrialNumber: Int = 0
@@ -70,6 +74,7 @@ class SensorDataCollector(context: Context) : SensorEventListener {
 
         isRecording = true
         recordingStartTime = System.currentTimeMillis()
+        lastLogTime = 0  // Reset log time for new recording
         currentSessionId = UUID.randomUUID().toString()
         currentTrialNumber = trialNumber
         currentTargetPin = targetPin
@@ -189,6 +194,7 @@ class SensorDataCollector(context: Context) : SensorEventListener {
     override fun onSensorChanged(event: SensorEvent) {
         if (!isRecording) return
 
+        // Update sensor values (all sensors update these arrays)
         when (event.sensor.type) {
             Sensor.TYPE_ACCELEROMETER -> {
                 accelValues = event.values.clone()
@@ -201,8 +207,13 @@ class SensorDataCollector(context: Context) : SensorEventListener {
             }
         }
 
-        // Log idle sensor data periodically (create a sample for continuous recording)
-        logEvent("idle")
+        // Only log at fixed intervals to avoid redundant samples
+        // This prevents logging the same data 3x (once per sensor update)
+        val now = System.currentTimeMillis()
+        if (now - lastLogTime >= LOG_INTERVAL_MS) {
+            logEvent("idle")
+            lastLogTime = now
+        }
     }
 
     override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {
