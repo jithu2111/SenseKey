@@ -6,6 +6,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.util.Log
+import java.util.Collections
 import java.util.UUID
 
 /**
@@ -14,8 +15,10 @@ import java.util.UUID
  */
 class SensorDataCollector(context: Context) : SensorEventListener {
 
+    // Use application context to prevent memory leaks when activity is destroyed
+    private val appContext = context.applicationContext
     private val sensorManager: SensorManager =
-        context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        appContext.getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
     // Sensors
     private val accelerometer: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -30,7 +33,8 @@ class SensorDataCollector(context: Context) : SensorEventListener {
     // Recording state
     private var isRecording = false
     private var recordingStartTime: Long = 0
-    private val sensorDataBuffer = mutableListOf<SensorData>()
+    // Thread-safe buffer to prevent ConcurrentModificationException when accessed from sensor and UI threads
+    private val sensorDataBuffer = Collections.synchronizedList(mutableListOf<SensorData>())
 
     // Logging control to prevent redundant samples
     private var lastLogTime: Long = 0

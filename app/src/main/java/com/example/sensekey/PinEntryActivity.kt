@@ -11,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -30,6 +31,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import com.example.sensekey.ui.theme.SenseKeyTheme
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -77,6 +79,7 @@ class PinEntryActivity : ComponentActivity() {
                 PinEntryScreen(
                     sensorCollector = sensorCollector,
                     csvExporter = csvExporter,
+                    lifecycleScope = lifecycleScope,
                     onPinCorrect = {
                         // Navigate to MainActivity when PIN is correct
                         val intent = Intent(this, MainActivity::class.java)
@@ -138,6 +141,7 @@ class PinEntryActivity : ComponentActivity() {
 fun PinEntryScreen(
     sensorCollector: SensorDataCollector,
     csvExporter: CSVExporter,
+    lifecycleScope: CoroutineScope,
     onPinCorrect: () -> Unit
 ) {
     var participantId by remember { mutableStateOf("") }
@@ -146,11 +150,12 @@ fun PinEntryScreen(
     var errorMessage by remember { mutableStateOf("") }
     var successMessage by remember { mutableStateOf("") }
     var isRecording by remember { mutableStateOf(false) }
+    // Prevent double-click: track if currently saving data
+    var isSavingData by remember { mutableStateOf(false) }
     var trialNumber by remember { mutableStateOf(1) }
     var sampleCount by remember { mutableStateOf(0) }
 
     val context = androidx.compose.ui.platform.LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
 
     // Update sample count periodically if recording
     LaunchedEffect(isRecording) {
@@ -363,8 +368,13 @@ fun PinEntryScreen(
                             // Check if PIN matches target (for feedback only, still save data)
                             val isCorrect = PinConfig.validatePin(pin)
 
+                            // Prevent duplicate saves during delay
+                            if (isSavingData) return@NumberPad
+                            isSavingData = true
+
                             // Wait 800ms after 4th digit for post-interaction data
-                            coroutineScope.launch {
+                            // Use lifecycleScope to ensure coroutine is cancelled if activity is destroyed
+                            lifecycleScope.launch {
                                 delay(800) // Post-4th-digit delay
 
                                 // Stop recording and save
@@ -400,11 +410,13 @@ fun PinEntryScreen(
                                     delay(2000)
                                     successMessage = ""
                                     pin = ""
+                                    isSavingData = false
                                 } else {
                                     errorMessage = "Failed to save data"
                                     delay(2000)
                                     errorMessage = ""
                                     pin = ""
+                                    isSavingData = false
                                 }
                             }
                         } else {
