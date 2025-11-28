@@ -36,7 +36,13 @@ data class SensorData(
     // Derived features (calculated at collection time)
     val accelMagnitude: Float,        // Overall acceleration magnitude
     val gyroMagnitude: Float,         // Overall rotation magnitude
-    val rotMagnitude: Float           // Overall rotation vector magnitude
+    val rotMagnitude: Float,          // Overall rotation vector magnitude
+
+    // Touch interaction data (only for button_press events)
+    val touchX: Float?,               // X coordinate of touch (pixels)
+    val touchY: Float?,               // Y coordinate of touch (pixels)
+    val touchPressure: Float?,        // Touch pressure (0.0-1.0, if available)
+    val touchSize: Float?             // Touch contact area (0.0-1.0, if available)
 ) {
     /**
      * Convert to CSV row format
@@ -47,7 +53,8 @@ data class SensorData(
                 "$gyroX,$gyroY,$gyroZ," +
                 "$rotVectorX,$rotVectorY,$rotVectorZ,$rotVectorScalar," +
                 "$eventType,${digitPressed ?: ""},${digitPosition ?: ""}," +
-                "$accelMagnitude,$gyroMagnitude,$rotMagnitude"
+                "$accelMagnitude,$gyroMagnitude,$rotMagnitude," +
+                "${touchX ?: ""},${touchY ?: ""},${touchPressure ?: ""},${touchSize ?: ""}"
     }
 
     companion object {
@@ -60,7 +67,8 @@ data class SensorData(
                     "gyro_x,gyro_y,gyro_z," +
                     "rot_x,rot_y,rot_z,rot_scalar," +
                     "event_type,digit_pressed,digit_position," +
-                    "accel_magnitude,gyro_magnitude,rot_magnitude"
+                    "accel_magnitude,gyro_magnitude,rot_magnitude," +
+                    "touch_x,touch_y,touch_pressure,touch_size"
         }
     }
 }

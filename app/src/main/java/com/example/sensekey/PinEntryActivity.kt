@@ -25,6 +25,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import com.example.sensekey.ui.theme.SenseKeyTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -325,19 +329,30 @@ fun PinEntryScreen(
 
         // Bottom Section: Number Pad
         NumberPad(
-            onNumberClick = { number ->
+            onNumberClick = { number, touchX, touchY, touchPressure, touchSize ->
+                android.util.Log.d("PinEntry", "Button clicked: $number, isRecording=$isRecording, pinLength=${pin.length}")
+
                 // Only allow PIN entry if recording and no success message
                 if (PinConfig.RESEARCH_MODE && !isRecording) {
+                    android.util.Log.d("PinEntry", "Blocked: Not recording")
                     return@NumberPad  // Block input until recording starts
                 }
 
                 if (pin.length < PinConfig.PIN_LENGTH && !successMessage.isNotEmpty()) {
                     pin += number
                     errorMessage = ""
+                    android.util.Log.d("PinEntry", "PIN updated: $pin")
 
-                    // Log button press if recording
+                    // Log button press with touch data if recording
                     if (isRecording) {
-                        sensorCollector.logButtonPress(number, pin.length - 1)
+                        sensorCollector.logButtonPress(
+                            digit = number,
+                            position = pin.length - 1,
+                            touchX = touchX,
+                            touchY = touchY,
+                            touchPressure = touchPressure,
+                            touchSize = touchSize
+                        )
                         sensorCollector.updateCurrentPin(pin)
                     }
 
@@ -435,7 +450,7 @@ fun PinDot(filled: Boolean) {
 
 @Composable
 fun NumberPad(
-    onNumberClick: (String) -> Unit,
+    onNumberClick: (String, Float?, Float?, Float?, Float?) -> Unit,
     onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -465,7 +480,9 @@ fun NumberPad(
                     RectangularNumberButton(
                         number = number,
                         label = label,
-                        onClick = { onNumberClick(number) }
+                        onClick = { touchX, touchY, touchPressure, touchSize ->
+                            onNumberClick(number, touchX, touchY, touchPressure, touchSize)
+                        }
                     )
                 }
             }
@@ -498,7 +515,9 @@ fun NumberPad(
             RectangularNumberButton(
                 number = "0",
                 label = "",
-                onClick = { onNumberClick("0") }
+                onClick = { touchX, touchY, touchPressure, touchSize ->
+                    onNumberClick("0", touchX, touchY, touchPressure, touchSize)
+                }
             )
 
             // Spacer button (invisible, maintains layout symmetry)
@@ -515,18 +534,50 @@ fun NumberPad(
 fun RectangularNumberButton(
     number: String,
     label: String,
-    onClick: () -> Unit
+    onClick: (Float?, Float?, Float?, Float?) -> Unit
 ) {
-    Button(
-        onClick = onClick,
+    Box(
         modifier = Modifier
             .width(95.dp)
-            .height(72.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+            .height(72.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .pointerInput(number) {
+                awaitEachGesture {
+                    // Wait for the first touch down
+                    val down = awaitFirstDown(requireUnconsumed = false)
+
+                    // Capture initial touch data
+                    val touchX = down.position.x
+                    val touchY = down.position.y
+                    val touchPressure = down.pressure
+                    val touchSize = down.pressure // Using pressure as proxy for size
+
+                    android.util.Log.d(
+                        "NumberButton",
+                        "Touch on $number: x=$touchX, y=$touchY, pressure=$touchPressure"
+                    )
+
+                    // Wait for all pointers to be released
+                    var released = false
+                    while (!released) {
+                        val event = awaitPointerEvent()
+                        // Check if all pointers are up (released)
+                        if (event.changes.all { !it.pressed }) {
+                            released = true
+                            // Consume the event
+                            event.changes.forEach { it.consume() }
+                            // Trigger the click callback with touch data
+                            onClick(touchX, touchY, touchPressure, touchSize)
+                            android.util.Log.d(
+                                "NumberButton",
+                                "Released $number - calling onClick with data"
+                            )
+                        }
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -536,7 +587,8 @@ fun RectangularNumberButton(
                 text = number,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             if (label.isNotEmpty()) {
                 Text(

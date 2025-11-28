@@ -131,9 +131,16 @@ class SensorDataCollector(context: Context) : SensorEventListener {
     }
 
     /**
-     * Log a button press event
+     * Log a button press event with touch data
      */
-    fun logButtonPress(digit: String, position: Int) {
+    fun logButtonPress(
+        digit: String,
+        position: Int,
+        touchX: Float? = null,
+        touchY: Float? = null,
+        touchPressure: Float? = null,
+        touchSize: Float? = null
+    ) {
         val now = System.currentTimeMillis()
 
         // Calculate and log inter-keystroke timing (IKT)
@@ -145,9 +152,15 @@ class SensorDataCollector(context: Context) : SensorEventListener {
         // Record this button press time
         buttonPressTimes.add(now)
 
-        currentPin += digit
-        logEvent("button_press", digit, position)
-        Log.d(TAG, "Button press logged: digit=$digit, position=$position")
+        // Don't update currentPin here - it's managed by updateCurrentPin() from the UI
+        logEvent("button_press", digit, position, touchX, touchY, touchPressure, touchSize)
+
+        // Log touch data and current PIN state for debugging
+        Log.d(TAG, "Button press: digit=$digit, pos=$position, currentPin='$currentPin', targetPin='$currentTargetPin'")
+        if (touchX != null && touchY != null) {
+            Log.d(TAG, "  Touch data: x=${touchX.toInt()}, y=${touchY.toInt()}, " +
+                    "pressure=${touchPressure ?: "N/A"}, size=${touchSize ?: "N/A"}")
+        }
     }
 
     /**
@@ -160,7 +173,15 @@ class SensorDataCollector(context: Context) : SensorEventListener {
     /**
      * Log an event (idle, button_press, etc.)
      */
-    private fun logEvent(eventType: String, digitPressed: String? = null, digitPosition: Int? = null) {
+    private fun logEvent(
+        eventType: String,
+        digitPressed: String? = null,
+        digitPosition: Int? = null,
+        touchX: Float? = null,
+        touchY: Float? = null,
+        touchPressure: Float? = null,
+        touchSize: Float? = null
+    ) {
         if (!isRecording) return
 
         val now = System.currentTimeMillis()
@@ -204,7 +225,11 @@ class SensorDataCollector(context: Context) : SensorEventListener {
             rotVectorScalar = rotVectorValues.getOrElse(3) { 0f },
             accelMagnitude = accelMagnitude,
             gyroMagnitude = gyroMagnitude,
-            rotMagnitude = rotMagnitude
+            rotMagnitude = rotMagnitude,
+            touchX = touchX,
+            touchY = touchY,
+            touchPressure = touchPressure,
+            touchSize = touchSize
         )
 
         sensorDataBuffer.add(sensorData)
