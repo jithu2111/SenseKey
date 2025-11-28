@@ -31,7 +31,12 @@ data class SensorData(
     val rotVectorX: Float,
     val rotVectorY: Float,
     val rotVectorZ: Float,
-    val rotVectorScalar: Float
+    val rotVectorScalar: Float,
+
+    // Derived features (calculated at collection time)
+    val accelMagnitude: Float,        // Overall acceleration magnitude
+    val gyroMagnitude: Float,         // Overall rotation magnitude
+    val rotMagnitude: Float           // Overall rotation vector magnitude
 ) {
     /**
      * Convert to CSV row format
@@ -41,7 +46,8 @@ data class SensorData(
                 "$accelX,$accelY,$accelZ," +
                 "$gyroX,$gyroY,$gyroZ," +
                 "$rotVectorX,$rotVectorY,$rotVectorZ,$rotVectorScalar," +
-                "$eventType,${digitPressed ?: ""},${digitPosition ?: ""}"
+                "$eventType,${digitPressed ?: ""},${digitPosition ?: ""}," +
+                "$accelMagnitude,$gyroMagnitude,$rotMagnitude"
     }
 
     companion object {
@@ -53,7 +59,8 @@ data class SensorData(
                     "accel_x,accel_y,accel_z," +
                     "gyro_x,gyro_y,gyro_z," +
                     "rot_x,rot_y,rot_z,rot_scalar," +
-                    "event_type,digit_pressed,digit_position"
+                    "event_type,digit_pressed,digit_position," +
+                    "accel_magnitude,gyro_magnitude,rot_magnitude"
         }
     }
 }

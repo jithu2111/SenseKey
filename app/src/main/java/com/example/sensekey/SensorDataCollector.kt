@@ -36,6 +36,9 @@ class SensorDataCollector(context: Context) : SensorEventListener {
     private var lastLogTime: Long = 0
     private val LOG_INTERVAL_MS = 5  // 200Hz effective sampling rate
 
+    // Inter-Keystroke Timing (IKT) tracking
+    private val buttonPressTimes = mutableListOf<Long>()
+
     // Session information
     private var currentSessionId: String = ""
     private var currentTrialNumber: Int = 0
@@ -75,6 +78,7 @@ class SensorDataCollector(context: Context) : SensorEventListener {
         isRecording = true
         recordingStartTime = System.currentTimeMillis()
         lastLogTime = 0  // Reset log time for new recording
+        buttonPressTimes.clear()  // Reset IKT tracking for new trial
         currentSessionId = UUID.randomUUID().toString()
         currentTrialNumber = trialNumber
         currentTargetPin = targetPin
@@ -113,7 +117,15 @@ class SensorDataCollector(context: Context) : SensorEventListener {
         sensorManager.unregisterListener(this)
 
         val collectedData = sensorDataBuffer.toList()
+
+        // Log summary statistics
         Log.d(TAG, "Recording stopped - Collected ${collectedData.size} samples")
+
+        // Log total entry time if we have button presses
+        if (buttonPressTimes.size >= 2) {
+            val totalEntryTime = buttonPressTimes.last() - buttonPressTimes.first()
+            Log.d(TAG, "Total entry time: $totalEntryTime ms")
+        }
 
         return collectedData
     }
@@ -122,6 +134,17 @@ class SensorDataCollector(context: Context) : SensorEventListener {
      * Log a button press event
      */
     fun logButtonPress(digit: String, position: Int) {
+        val now = System.currentTimeMillis()
+
+        // Calculate and log inter-keystroke timing (IKT)
+        if (buttonPressTimes.isNotEmpty()) {
+            val interKeystrokeTime = now - buttonPressTimes.last()
+            Log.d(TAG, "Inter-keystroke time: $interKeystrokeTime ms (button $position)")
+        }
+
+        // Record this button press time
+        buttonPressTimes.add(now)
+
         currentPin += digit
         logEvent("button_press", digit, position)
         Log.d(TAG, "Button press logged: digit=$digit, position=$position")
@@ -149,6 +172,15 @@ class SensorDataCollector(context: Context) : SensorEventListener {
             0  // Incomplete PIN
         }
 
+        // Calculate magnitudes from sensor values
+        val accelMagnitude = calculateMagnitude(accelValues[0], accelValues[1], accelValues[2])
+        val gyroMagnitude = calculateMagnitude(gyroValues[0], gyroValues[1], gyroValues[2])
+        val rotMagnitude = calculateMagnitude(
+            rotVectorValues[0],
+            rotVectorValues[1],
+            rotVectorValues[2]
+        )
+
         val sensorData = SensorData(
             timestamp = now,
             timeFromStart = now - recordingStartTime,
@@ -169,11 +201,22 @@ class SensorDataCollector(context: Context) : SensorEventListener {
             rotVectorX = rotVectorValues[0],
             rotVectorY = rotVectorValues[1],
             rotVectorZ = rotVectorValues[2],
-            rotVectorScalar = rotVectorValues.getOrElse(3) { 0f }
+            rotVectorScalar = rotVectorValues.getOrElse(3) { 0f },
+            accelMagnitude = accelMagnitude,
+            gyroMagnitude = gyroMagnitude,
+            rotMagnitude = rotMagnitude
         )
 
         sensorDataBuffer.add(sensorData)
         onDataCollected?.invoke(sensorData)
+    }
+
+    /**
+     * Calculate magnitude from 3D vector components
+     * Formula: magnitude = sqrt(x² + y² + z²)
+     */
+    private fun calculateMagnitude(x: Float, y: Float, z: Float): Float {
+        return kotlin.math.sqrt(x * x + y * y + z * z)
     }
 
     /**
