@@ -548,16 +548,27 @@ fun RectangularNumberButton(
     label: String,
     onClick: (Float?, Float?, Float?, Float?) -> Unit
 ) {
+    // Track pressed state for visual feedback
+    var isPressed by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .width(95.dp)
             .height(72.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(
+                if (isPressed)
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                else
+                    MaterialTheme.colorScheme.surfaceVariant
+            )
             .pointerInput(number) {
                 awaitEachGesture {
                     // Wait for the first touch down
                     val down = awaitFirstDown(requireUnconsumed = false)
+
+                    // Show pressed state
+                    isPressed = true
 
                     // Capture initial touch data
                     val touchX = down.position.x
@@ -577,6 +588,8 @@ fun RectangularNumberButton(
                         // Check if all pointers are up (released)
                         if (event.changes.all { !it.pressed }) {
                             released = true
+                            // Remove pressed state
+                            isPressed = false
                             // Consume the event
                             event.changes.forEach { it.consume() }
                             // Trigger the click callback with touch data
