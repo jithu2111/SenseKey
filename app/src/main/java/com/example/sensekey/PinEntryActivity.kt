@@ -30,6 +30,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import com.example.sensekey.ui.theme.SenseKeyTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -146,6 +148,7 @@ fun PinEntryScreen(
 ) {
     var participantId by remember { mutableStateOf("") }
     var showParticipantInput by remember { mutableStateOf(true) }
+    var isPredictionMode by remember { mutableStateOf(false) }
     var pin by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
     var successMessage by remember { mutableStateOf("") }
@@ -170,9 +173,25 @@ fun PinEntryScreen(
     // Show Participant ID input screen first
     if (showParticipantInput) {
         ParticipantIdInputScreen(
-            onContinue = { id ->
+            onStartDataCollection = { id ->
                 participantId = id
+                isPredictionMode = false
                 showParticipantInput = false
+            },
+            onStartPrediction = {
+                isPredictionMode = true
+                showParticipantInput = false
+            }
+        )
+        return
+    }
+
+    // Show prediction mode screen
+    if (isPredictionMode) {
+        PredictionScreen(
+            onBack = {
+                showParticipantInput = true
+                isPredictionMode = false
             }
         )
         return
@@ -550,6 +569,8 @@ fun RectangularNumberButton(
 ) {
     // Track pressed state for visual feedback
     var isPressed by remember { mutableStateOf(false) }
+    // Track button's global position on screen
+    var buttonPositionInWindow by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
     Box(
         modifier = Modifier
@@ -562,6 +583,10 @@ fun RectangularNumberButton(
                 else
                     MaterialTheme.colorScheme.surfaceVariant
             )
+            .onGloballyPositioned { coordinates ->
+                // Get the button's global position in the window
+                buttonPositionInWindow = coordinates.positionInWindow()
+            }
             .pointerInput(number) {
                 awaitEachGesture {
                     // Wait for the first touch down
@@ -570,15 +595,17 @@ fun RectangularNumberButton(
                     // Show pressed state
                     isPressed = true
 
-                    // Capture initial touch data
-                    val touchX = down.position.x
-                    val touchY = down.position.y
+                    // Capture initial touch data - CONVERT TO GLOBAL COORDINATES
+                    val localTouchX = down.position.x
+                    val localTouchY = down.position.y
+                    val globalTouchX = buttonPositionInWindow.x + localTouchX
+                    val globalTouchY = buttonPositionInWindow.y + localTouchY
                     val touchPressure = down.pressure
                     val touchSize = down.pressure // Using pressure as proxy for size
 
                     android.util.Log.d(
                         "NumberButton",
-                        "Touch on $number: x=$touchX, y=$touchY, pressure=$touchPressure"
+                        "Touch on $number: local=($localTouchX, $localTouchY), global=($globalTouchX, $globalTouchY), pressure=$touchPressure"
                     )
 
                     // Wait for all pointers to be released
@@ -592,11 +619,11 @@ fun RectangularNumberButton(
                             isPressed = false
                             // Consume the event
                             event.changes.forEach { it.consume() }
-                            // Trigger the click callback with touch data
-                            onClick(touchX, touchY, touchPressure, touchSize)
+                            // Trigger the click callback with GLOBAL touch data
+                            onClick(globalTouchX, globalTouchY, touchPressure, touchSize)
                             android.util.Log.d(
                                 "NumberButton",
-                                "Released $number - calling onClick with data"
+                                "Released $number - calling onClick with global data"
                             )
                         }
                     }
@@ -629,7 +656,8 @@ fun RectangularNumberButton(
 
 @Composable
 fun ParticipantIdInputScreen(
-    onContinue: (String) -> Unit
+    onStartDataCollection: (String) -> Unit,
+    onStartPrediction: () -> Unit
 ) {
     var participantId by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
@@ -709,13 +737,13 @@ fun ParticipantIdInputScreen(
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Continue Button
+        // Start Data Collection Button
         Button(
             onClick = {
                 if (participantId.isBlank()) {
                     errorMessage = "Please enter a participant ID"
                 } else {
-                    onContinue(participantId.trim())
+                    onStartDataCollection(participantId.trim())
                 }
             },
             modifier = Modifier
@@ -735,6 +763,28 @@ fun ParticipantIdInputScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Start Predicting Button
+        Button(
+            onClick = {
+                onStartPrediction()
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .height(56.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.secondary
+            )
+        ) {
+            Text(
+                text = "Start Predicting",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         // Info text
         Text(
             text = "You'll collect data for 22 different PIN patterns",
@@ -742,5 +792,194 @@ fun ParticipantIdInputScreen(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
             textAlign = TextAlign.Center
         )
+    }
+}
+
+@Composable
+fun PredictionScreen(
+    onBack: () -> Unit
+) {
+    var pin by remember { mutableStateOf("") }
+    var touchData by remember { mutableStateOf<List<TouchPoint>>(emptyList()) }
+    var predictedPin by remember { mutableStateOf<String?>(null) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        // Top Section: Title and PIN Display
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(top = 20.dp)
+        ) {
+            // App Title
+            Text(
+                text = "SenseKey",
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Back button
+            TextButton(onClick = onBack) {
+                Text("← Back to Menu", fontSize = 14.sp)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Prediction Mode Label
+            Text(
+                text = "Prediction Mode",
+                fontSize = 16.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            )
+
+            Spacer(modifier = Modifier.height(60.dp))
+
+            // PIN Dots Display
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                modifier = Modifier.padding(bottom = 16.dp)
+            ) {
+                repeat(PinConfig.PIN_LENGTH) { index ->
+                    PinDot(filled = index < pin.length)
+                }
+            }
+
+            // Show predicted PIN result
+            if (predictedPin != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Predicted PIN: $predictedPin",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        // Bottom Section: Number Pad (EXACT same component as data collection)
+        NumberPad(
+            onNumberClick = { number, touchX, touchY, touchPressure, touchSize ->
+                if (pin.length < PinConfig.PIN_LENGTH) {
+                    pin += number
+
+                    // Store touch data
+                    if (touchX != null && touchY != null) {
+                        touchData = touchData + TouchPoint(
+                            digit = number,
+                            position = pin.length - 1,
+                            x = touchX,
+                            y = touchY,
+                            pressure = touchPressure,
+                            size = touchSize
+                        )
+                    }
+
+                    android.util.Log.d("Prediction", "Button $number pressed at ($touchX, $touchY)")
+
+                    // When 4 digits entered, predict PIN
+                    if (pin.length == PinConfig.PIN_LENGTH) {
+                        // Perform geometric detection
+                        val detected = GeometricPinDetector.detectPin(touchData)
+                        predictedPin = detected
+
+                        android.util.Log.d("Prediction", "PIN entered: $pin")
+                        android.util.Log.d("Prediction", "Predicted PIN: $detected")
+
+                        // Reset after 3 seconds
+                        kotlinx.coroutines.GlobalScope.launch {
+                            delay(3000)
+                            pin = ""
+                            touchData = emptyList()
+                            predictedPin = null
+                        }
+                    }
+                }
+            },
+            onDeleteClick = {
+                if (pin.isNotEmpty()) {
+                    pin = pin.dropLast(1)
+                    touchData = touchData.dropLast(1)
+                }
+            },
+            modifier = Modifier.padding(bottom = 24.dp)
+        )
+    }
+}
+
+// Data class to store touch coordinates
+data class TouchPoint(
+    val digit: String,
+    val position: Int,
+    val x: Float,
+    val y: Float,
+    val pressure: Float?,
+    val size: Float?
+)
+
+// Geometric PIN detector using touch coordinates
+object GeometricPinDetector {
+    // UPDATED Centroids calculated from latest logs (2025-11-29)
+    // These values are the weighted average of all your successful trials
+    private val centroids = arrayOf(
+        floatArrayOf(585f, 2092f), // 0
+        floatArrayOf(197f, 1325f), // 1
+        floatArrayOf(573f, 1327f), // 2
+        floatArrayOf(898f, 1314f), // 3
+        floatArrayOf(192f, 1561f), // 4
+        floatArrayOf(578f, 1588f), // 5
+        floatArrayOf(894f, 1578f), // 6
+        floatArrayOf(187f, 1823f), // 7
+        floatArrayOf(584f, 1840f), // 8
+        floatArrayOf(892f, 1832f)  // 9
+    )
+
+    fun detectPin(touchPoints: List<TouchPoint>): String {
+        if (touchPoints.isEmpty()) return ""
+
+        val detectedDigits = touchPoints.map { touchPoint ->
+            predictDigit(touchPoint.x, touchPoint.y)
+        }
+
+        return detectedDigits.joinToString("")
+    }
+
+    private fun predictDigit(touchX: Float, touchY: Float): String {
+        var predictedDigit = -1
+        var minDistance = Float.MAX_VALUE
+
+        for (i in centroids.indices) {
+            val cx = centroids[i][0]
+            val cy = centroids[i][1]
+
+            val dx = touchX - cx
+            val dy = touchY - cy
+            val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+
+            if (distance < minDistance) {
+                minDistance = distance
+                predictedDigit = i
+            }
+        }
+
+        // --- CRITICAL FIX: Increased Threshold from 100 to 250 ---
+        // Your buttons are wide. A tap on the edge can be 150px from center.
+        if (minDistance > 250) {
+            android.util.Log.d("GeometricDetector",
+                "Touch ($touchX, $touchY) rejected - distance too large: $minDistance")
+            return "?"
+        }
+
+        android.util.Log.d("GeometricDetector",
+            "Touch ($touchX, $touchY) mapped to digit '$predictedDigit', distance=$minDistance")
+
+        return predictedDigit.toString()
     }
 }
