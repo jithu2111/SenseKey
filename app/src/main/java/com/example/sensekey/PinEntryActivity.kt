@@ -340,6 +340,7 @@ fun PinEntryScreen(
                 // Only allow PIN entry if recording and no success message
                 if (PinConfig.RESEARCH_MODE && !isRecording) {
                     android.util.Log.d("PinEntry", "Blocked: Not recording")
+
                     return@NumberPad  // Block input until recording starts
                 }
 
@@ -633,6 +634,7 @@ fun ParticipantIdInputScreen(
 ) {
     var participantId by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(
         modifier = Modifier
@@ -728,6 +730,29 @@ fun ParticipantIdInputScreen(
         ) {
             Text(
                 text = "Start Data Collection",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Start Predicting Button
+        Button(
+            onClick = {
+                val intent = Intent(context, PredictionActivity::class.java)
+                context.startActivity(intent)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .height(56.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.secondary
+            )
+        ) {
+            Text(
+                text = "Start Predicting",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )

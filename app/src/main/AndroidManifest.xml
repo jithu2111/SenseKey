@@ -40,6 +40,14 @@
             android:label="@string/app_name"
             android:theme="@style/Theme.SenseKey">
         </activity>
+
+        <!-- Prediction Activity - PIN prediction mode -->
+        <activity
+            android:name=".PredictionActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.SenseKey">
+        </activity>
     </application>
 
 </manifest>
