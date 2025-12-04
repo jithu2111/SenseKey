@@ -9,6 +9,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -26,7 +27,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.sensekey.ui.theme.SenseKeyTheme
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class PredictionActivity : ComponentActivity(), SensorEventListener {
 
@@ -37,6 +38,9 @@ class PredictionActivity : ComponentActivity(), SensorEventListener {
 
     private lateinit var pinPredictor: PinPredictor
     private val sensorBuffer = PinPredictor.SensorBuffer()
+    
+    // NEW: Backend prediction service
+    private lateinit var predictionService: PinPredictionService
 
     // Current sensor values
     private var accelValues = FloatArray(3) { 0f }
@@ -44,9 +48,15 @@ class PredictionActivity : ComponentActivity(), SensorEventListener {
     private var rotVectorValues = FloatArray(4) { 0f }
 
     // Prediction state
-    private var isPredicting = mutableStateOf(false)
-    private var predictedPin = mutableStateOf("")
+    private var showKeypad = mutableStateOf(false)     // Show keypad screen
+    private var isRecording = mutableStateOf(false)   // Recording sensor data
+    private var typedPin = mutableStateOf("")         // Actually typed PIN
     private var resultMessage = mutableStateOf("")
+    private var apiPredictedPin = mutableStateOf("") // API prediction result
+    private var pinLength = mutableStateOf(4)         // PIN length (3 or 4)
+    private var showSendingModal = mutableStateOf(false) // Show "sending data" modal
+    private var showResponseModal = mutableStateOf(false) // Show API response modal
+    private var apiResponseMessage = mutableStateOf("") // API response message
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,8 +68,9 @@ class PredictionActivity : ComponentActivity(), SensorEventListener {
         gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
         rotationVector = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
 
-        // Initialize predictor
+        // Initialize predictors
         pinPredictor = PinPredictor(this)
+        predictionService = PinPredictionService(this)
 
         // Start sensors
         startSensors()
@@ -67,23 +78,66 @@ class PredictionActivity : ComponentActivity(), SensorEventListener {
         setContent {
             SenseKeyTheme {
                 PredictionScreen(
-                    isPredicting = isPredicting.value,
-                    predictedPin = predictedPin.value,
-                    resultMessage = resultMessage.value,
-                    onButtonClick = { number, touchX, touchY ->
-                        handleButtonClick(number, touchX, touchY)
+                    showKeypad = showKeypad.value,
+                    isRecording = isRecording.value,
+                    typedPin = typedPin.value,
+                    pinLength = pinLength.value,
+                    apiPredictedPin = apiPredictedPin.value,
+                    showSendingModal = showSendingModal.value,
+                    showResponseModal = showResponseModal.value,
+                    apiResponseMessage = apiResponseMessage.value,
+                    onSelectMode = { mode ->
+                        pinLength.value = mode
+                        showKeypad.value = true
+                        isRecording.value = true
+                        predictionService.clearData()
+                        typedPin.value = ""
+                    },
+                    onButtonClick = { number, touchX, touchY, pressTime, releaseTime ->
+                        handleButtonClick(number, touchX, touchY, pressTime, releaseTime)
                     },
                     onDeleteClick = {
-                        if (predictedPin.value.isNotEmpty()) {
-                            predictedPin.value = predictedPin.value.dropLast(1)
-                            resultMessage.value = ""
+                        if (typedPin.value.isNotEmpty()) {
+                            typedPin.value = typedPin.value.dropLast(1)
                         }
                     },
-                    onStartPredicting = {
-                        startPredicting()
+                    onOkClick = {
+                        // Call API with typed PIN and collected data
+                        lifecycleScope.launch {
+                            showSendingModal.value = true
+                            try {
+                                val apiResult = predictionService.predictPin(typedPin.value)
+                                showSendingModal.value = false
+                                apiResult.onSuccess { apiPin ->
+                                    apiPredictedPin.value = apiPin
+                                    apiResponseMessage.value = "Predicted PIN: $apiPin"
+                                    showResponseModal.value = true
+                                    android.util.Log.d("PredictionActivity", "API predicted PIN: $apiPin")
+                                }.onFailure { error ->
+                                    apiResponseMessage.value = "Error: ${error.message}"
+                                    showResponseModal.value = true
+                                    android.util.Log.e("PredictionActivity", "API prediction failed: ${error.message}")
+                                }
+                            } catch (e: Exception) {
+                                showSendingModal.value = false
+                                apiResponseMessage.value = "Error: ${e.message}"
+                                showResponseModal.value = true
+                                android.util.Log.e("PredictionActivity", "API call exception", e)
+                            }
+                        }
+                    },
+                    onDismissResponseModal = {
+                        showResponseModal.value = false
                     },
                     onReset = {
-                        resetPrediction()
+                        showKeypad.value = false
+                        isRecording.value = false
+                        typedPin.value = ""
+                        apiPredictedPin.value = ""
+                        showSendingModal.value = false
+                        showResponseModal.value = false
+                        apiResponseMessage.value = ""
+                        predictionService.clearData()
                     }
                 )
             }
@@ -102,57 +156,29 @@ class PredictionActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
-    private fun startPredicting() {
-        isPredicting.value = true
-        predictedPin.value = ""
-        resultMessage.value = ""
-        sensorBuffer.clear()
-    }
+    private fun handleButtonClick(number: String, touchX: Float?, touchY: Float?, pressTime: Long?, releaseTime: Long?) {
+        // Only accept input when recording and PIN not complete
+        if (!isRecording.value || typedPin.value.length >= pinLength.value) return
 
-    private fun handleButtonClick(number: String, touchX: Float?, touchY: Float?) {
-        if (!isPredicting.value) return
-        if (predictedPin.value.length >= 4) return
+        android.util.Log.d("PredictionActivity", "Recording digit: $number")
 
-        android.util.Log.d("PredictionActivity", "Buffer size at button press: ${sensorBuffer.size()}")
+        // Add touch data to API service (for backward compatibility)
+        predictionService.addTouchData(touchX, touchY, 0f, 0f)
 
-        // Extract features with LAST 8 samples in buffer (snapshot at moment of touch)
-        val features = pinPredictor.extractFeatures(
-            touchX = touchX,
-            touchY = touchY,
-            rotX = rotVectorValues[0],
-            rotY = rotVectorValues[1],
-            rotZ = rotVectorValues[2],
-            rotScalar = rotVectorValues.getOrElse(3) { 0f },
-            sensorBuffer = sensorBuffer
-        )
-
-        // Predict digit
-        val prediction = pinPredictor.predict(features)
-
-        android.util.Log.d("PredictionActivity", "Button pressed: $number, Predicted: $prediction")
-        android.util.Log.d("PredictionActivity", "Features: ${features.joinToString()}")
-
-        if (prediction != null) {
-            predictedPin.value += prediction
-
-            // Check if PIN is complete
-            if (predictedPin.value.length == 4) {
-                resultMessage.value = "Entered PIN is: ${predictedPin.value}"
-                isPredicting.value = false
-            }
+        // Add keystroke event with press/release timestamps (CRITICAL for temporal features)
+        if (pressTime != null && releaseTime != null) {
+            predictionService.addKeystrokeEvent(number, pressTime, releaseTime)
+            android.util.Log.d("PredictionActivity", "Keystroke: digit=$number, press=$pressTime, release=$releaseTime, duration=${releaseTime - pressTime}ms")
         } else {
-            resultMessage.value = "Prediction failed"
+            // Fallback: use current time if timestamps not provided
+            val now = System.currentTimeMillis()
+            predictionService.addKeystrokeEvent(number, now - 100, now)  // Assume 100ms duration
         }
 
-        // DO NOT clear buffer - it continues rolling for next button press
-        // The buffer automatically maintains only last 8 samples
-    }
+        // Add the typed digit to our PIN
+        typedPin.value += number
 
-    private fun resetPrediction() {
-        isPredicting.value = false
-        predictedPin.value = ""
-        resultMessage.value = ""
-        sensorBuffer.clear()
+        android.util.Log.d("PredictionActivity", "Typed PIN so far: ${typedPin.value}")
     }
 
     override fun onSensorChanged(event: SensorEvent) {
@@ -165,6 +191,22 @@ class PredictionActivity : ComponentActivity(), SensorEventListener {
                     accelValues[0], accelValues[1], accelValues[2],
                     gyroValues[0], gyroValues[1], gyroValues[2]
                 )
+                
+                // Add sensor data to API service when recording
+                if (isRecording.value) {
+                    predictionService.addSensorData(
+                        accelX = accelValues[0],
+                        accelY = accelValues[1], 
+                        accelZ = accelValues[2],
+                        gyroX = gyroValues[0],
+                        gyroY = gyroValues[1],
+                        gyroZ = gyroValues[2],
+                        rotX = rotVectorValues[0],
+                        rotY = rotVectorValues[1],
+                        rotZ = rotVectorValues[2],
+                        rotScalar = rotVectorValues.getOrElse(3) { 0f }
+                    )
+                }
             }
             Sensor.TYPE_GYROSCOPE -> {
                 gyroValues = event.values.clone()
@@ -188,107 +230,168 @@ class PredictionActivity : ComponentActivity(), SensorEventListener {
 
 @Composable
 fun PredictionScreen(
-    isPredicting: Boolean,
-    predictedPin: String,
-    resultMessage: String,
-    onButtonClick: (String, Float?, Float?) -> Unit,
+    showKeypad: Boolean,
+    isRecording: Boolean,
+    typedPin: String,
+    pinLength: Int,
+    apiPredictedPin: String,
+    showSendingModal: Boolean,
+    showResponseModal: Boolean,
+    apiResponseMessage: String,
+    onSelectMode: (Int) -> Unit,
+    onButtonClick: (String, Float?, Float?, Long?, Long?) -> Unit,
     onDeleteClick: () -> Unit,
-    onStartPredicting: () -> Unit,
+    onOkClick: () -> Unit,
+    onDismissResponseModal: () -> Unit,
     onReset: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        // Top Section: Title and PIN Display
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(top = 20.dp)
+    // Sending data modal
+    if (showSendingModal) {
+        AlertDialog(
+            onDismissRequest = { /* Don't allow dismiss while sending */ },
+            title = {
+                Text("Sending Data", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Please wait...", fontSize = 16.sp)
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
+    // API response modal
+    if (showResponseModal) {
+        AlertDialog(
+            onDismissRequest = onDismissResponseModal,
+            title = {
+                Text("API Response", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(apiResponseMessage, fontSize = 16.sp)
+            },
+            confirmButton = {
+                Button(onClick = onDismissResponseModal) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+    if (!showKeypad) {
+        // Mode selection screen
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
-            // App Title
-            Text(
-                text = "SenseKey",
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Subtitle
-            Text(
-                text = "PIN Prediction Mode",
-                fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Start Predicting Button or Status
-            if (!isPredicting && predictedPin.isEmpty()) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                Text(
+                    text = "SenseKey",
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Select PIN Mode",
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
                 Button(
-                    onClick = onStartPredicting,
+                    onClick = { onSelectMode(3) },
+                    modifier = Modifier.width(200.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
                 ) {
-                    Text("Start Predicting", fontSize = 16.sp)
+                    Text("3 Digit Mode", fontSize = 18.sp)
                 }
-            } else if (isPredicting) {
-                Text(
-                    text = "🔴 Predicting...",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.error
-                )
-            } else if (!isPredicting && predictedPin.isNotEmpty()) {
-                // Prediction complete - show reset button
                 Button(
-                    onClick = onReset,
+                    onClick = { onSelectMode(4) },
+                    modifier = Modifier.width(200.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondary
+                        containerColor = MaterialTheme.colorScheme.primary
                     )
                 ) {
-                    Text("Reset", fontSize = 16.sp)
+                    Text("4 Digit Mode", fontSize = 18.sp)
                 }
-            }
-
-            Spacer(modifier = Modifier.height(40.dp))
-
-            // PIN Dots Display
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(20.dp),
-                modifier = Modifier.padding(bottom = 16.dp)
-            ) {
-                repeat(PinConfig.PIN_LENGTH) { index ->
-                    PredictionPinDot(filled = index < predictedPin.length)
-                }
-            }
-
-            // Result Message
-            if (resultMessage.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = resultMessage,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
             }
         }
+    } else {
+        // Keypad screen
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Top Section: Title and PIN Display
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(top = 20.dp)
+            ) {
+                // App Title
+                Text(
+                    text = "SenseKey",
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
 
-        // Bottom Section: Number Pad
-        PredictionNumberPad(
-            onNumberClick = { number, touchX, touchY, touchPressure, touchSize ->
-                onButtonClick(number, touchX, touchY)
-            },
-            onDeleteClick = onDeleteClick,
-            modifier = Modifier.padding(bottom = 24.dp)
-        )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Subtitle
+                Text(
+                    text = "PIN Prediction Mode",
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // PIN Dots Display
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    modifier = Modifier.padding(bottom = 16.dp)
+                ) {
+                    repeat(pinLength) { index ->
+                        PredictionPinDot(filled = index < typedPin.length)
+                    }
+                }
+
+                // Show API predicted PIN if available
+                if (apiPredictedPin.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Predicted: $apiPredictedPin",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // Bottom Section: Number Pad
+            PredictionNumberPad(
+                onNumberClick = { number, touchX, touchY, pressTime, releaseTime ->
+                    onButtonClick(number, touchX, touchY, pressTime, releaseTime)
+                },
+                onDeleteClick = onDeleteClick,
+                modifier = Modifier.padding(bottom = 24.dp),
+                onOkClick = if (typedPin.length == pinLength) onOkClick else null
+            )
+        }
     }
 }
 
@@ -307,9 +410,10 @@ fun PredictionPinDot(filled: Boolean) {
 
 @Composable
 fun PredictionNumberPad(
-    onNumberClick: (String, Float?, Float?, Float?, Float?) -> Unit,
+    onNumberClick: (String, Float?, Float?, Long?, Long?) -> Unit,
     onDeleteClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOkClick: (() -> Unit)? = null
 ) {
     Column(
         modifier = modifier,
@@ -337,8 +441,8 @@ fun PredictionNumberPad(
                     PredictionRectangularNumberButton(
                         number = number,
                         label = label,
-                        onClick = { touchX, touchY, touchPressure, touchSize ->
-                            onNumberClick(number, touchX, touchY, touchPressure, touchSize)
+                        onClick = { touchX, touchY, pressTime, releaseTime ->
+                            onNumberClick(number, touchX, touchY, pressTime, releaseTime)
                         }
                     )
                 }
@@ -372,17 +476,38 @@ fun PredictionNumberPad(
             PredictionRectangularNumberButton(
                 number = "0",
                 label = "",
-                onClick = { touchX, touchY, touchPressure, touchSize ->
-                    onNumberClick("0", touchX, touchY, touchPressure, touchSize)
+                onClick = { touchX, touchY, pressTime, releaseTime ->
+                    onNumberClick("0", touchX, touchY, pressTime, releaseTime)
                 }
             )
 
-            // Spacer button (invisible, maintains layout symmetry)
-            Box(
-                modifier = Modifier
-                    .width(95.dp)
-                    .height(72.dp)
-            )
+            // OK/Enter button (if onOkClick is provided)
+            if (onOkClick != null) {
+                Button(
+                    onClick = onOkClick,
+                    modifier = Modifier
+                        .width(95.dp)
+                        .height(72.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                ) {
+                    Text(
+                        text = "OK",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            } else {
+                // Spacer button (invisible, maintains layout symmetry)
+                Box(
+                    modifier = Modifier
+                        .width(95.dp)
+                        .height(72.dp)
+                )
+            }
         }
     }
 }
@@ -391,7 +516,7 @@ fun PredictionNumberPad(
 fun PredictionRectangularNumberButton(
     number: String,
     label: String,
-    onClick: (Float?, Float?, Float?, Float?) -> Unit
+    onClick: (Float?, Float?, Long?, Long?) -> Unit
 ) {
     // Track pressed state for visual feedback
     var isPressed by remember { mutableStateOf(false) }
@@ -415,15 +540,14 @@ fun PredictionRectangularNumberButton(
                     // Show pressed state
                     isPressed = true
 
-                    // Capture initial touch data
+                    // Capture initial touch data and PRESS timestamp
                     val touchX = down.position.x
                     val touchY = down.position.y
-                    val touchPressure = down.pressure
-                    val touchSize = down.pressure // Using pressure as proxy for size
+                    val pressTimestamp = System.currentTimeMillis()
 
                     android.util.Log.d(
                         "NumberButton",
-                        "Touch on $number: x=$touchX, y=$touchY, pressure=$touchPressure"
+                        "Touch DOWN on $number: x=$touchX, y=$touchY, pressTime=$pressTimestamp"
                     )
 
                     // Wait for all pointers to be released
@@ -435,13 +559,17 @@ fun PredictionRectangularNumberButton(
                             released = true
                             // Remove pressed state
                             isPressed = false
+                            // Capture RELEASE timestamp
+                            val releaseTimestamp = System.currentTimeMillis()
+                            val duration = releaseTimestamp - pressTimestamp
+                            
                             // Consume the event
                             event.changes.forEach { it.consume() }
-                            // Trigger the click callback with touch data
-                            onClick(touchX, touchY, touchPressure, touchSize)
+                            // Trigger the click callback with touch data AND timestamps
+                            onClick(touchX, touchY, pressTimestamp, releaseTimestamp)
                             android.util.Log.d(
                                 "NumberButton",
-                                "Released $number - calling onClick with data"
+                                "Released $number - press=$pressTimestamp, release=$releaseTimestamp, duration=${duration}ms"
                             )
                         }
                     }

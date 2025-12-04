@@ -53,6 +53,17 @@ dependencies {
     // ONNX Runtime for ML model inference (supports IR version 10)
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
 
+    // Retrofit for HTTP API calls
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    
+    // OkHttp for HTTP client
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    
+    // Gson for JSON serialization
+    implementation("com.google.code.gson:gson:2.10.1")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

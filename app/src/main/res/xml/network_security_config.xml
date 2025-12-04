@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Allow all HTTPS connections (default behavior) -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <!-- Trust preinstalled CAs -->
+            <certificates src="system" />
+            <!-- Additionally trust user added CAs -->
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+    
+    <!-- Specific configuration for Railway domain -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">up.railway.app</domain>
+        <domain includeSubdomains="true">pinpredictionapi-production.up.railway.app</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>
+
