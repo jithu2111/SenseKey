@@ -181,6 +181,7 @@ fun PredictionScreen(
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 Text("SenseKey", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 Text("Select PIN Mode")
+                Button(onClick = { onSelectMode(3) }) { Text("3 Digit Mode") }
                 Button(onClick = { onSelectMode(4) }) { Text("4 Digit Mode") }
             }
         }
