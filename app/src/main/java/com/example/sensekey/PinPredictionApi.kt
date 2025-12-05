@@ -17,21 +17,44 @@ interface PinPredictionApiService {
 }
 
 /**
- * UPDATED: Request body matching your exact JSON structure
+ * Request body with full sensor data for ML model
  */
 data class PinPredictionRequest(
-    @SerializedName("touch_data") val touchData: List<TouchCoordinate>,
+    @SerializedName("sensor_data") val sensorData: List<SensorSample>,
     @SerializedName("device_id") val deviceId: String,
     @SerializedName("session_id") val sessionId: String,
     @SerializedName("actual_pin") val actualPin: String
 )
 
 /**
- * UPDATED: Data point for a single touch event (X, Y only)
+ * Single sensor sample with all motion and temporal data
  */
-data class TouchCoordinate(
-    @SerializedName("abs_touch_x") val absTouchX: Float,
-    @SerializedName("abs_touch_y") val absTouchY: Float
+data class SensorSample(
+    @SerializedName("timestamp_ms") val timestampMs: Long,
+    @SerializedName("time_from_start_ms") val timeFromStartMs: Long,
+
+    // Accelerometer (m/s²)
+    @SerializedName("accel_x") val accelX: Float,
+    @SerializedName("accel_y") val accelY: Float,
+    @SerializedName("accel_z") val accelZ: Float,
+    @SerializedName("accel_magnitude") val accelMagnitude: Float,
+
+    // Gyroscope (rad/s)
+    @SerializedName("gyro_x") val gyroX: Float,
+    @SerializedName("gyro_y") val gyroY: Float,
+    @SerializedName("gyro_z") val gyroZ: Float,
+    @SerializedName("gyro_magnitude") val gyroMagnitude: Float,
+
+    // Rotation Vector
+    @SerializedName("rot_x") val rotX: Float,
+    @SerializedName("rot_y") val rotY: Float,
+    @SerializedName("rot_z") val rotZ: Float,
+    @SerializedName("rot_scalar") val rotScalar: Float,
+
+    // Event markers
+    @SerializedName("event_type") val eventType: String,
+    @SerializedName("digit_pressed") val digitPressed: String?,
+    @SerializedName("digit_position") val digitPosition: Int?
 )
 
 data class PinPredictionResponse(
@@ -56,6 +79,7 @@ object PinPredictionApi {
         .addInterceptor(loggingInterceptor)
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)  // Add write timeout for large payloads
         .build()
 
     private val retrofit = Retrofit.Builder()

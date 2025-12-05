@@ -25,6 +25,7 @@ local.properties
 # Android Studio files
 *.iml
 .idea/
+.kotlin
 .DS_Store
 
 # External native build

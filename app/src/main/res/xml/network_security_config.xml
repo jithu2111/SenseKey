@@ -9,7 +9,7 @@
             <certificates src="user" />
         </trust-anchors>
     </base-config>
-    
+
     <!-- Specific configuration for Railway domain -->
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">up.railway.app</domain>
@@ -18,6 +18,13 @@
             <certificates src="system" />
             <certificates src="user" />
         </trust-anchors>
+    </domain-config>
+
+    <!-- LOCAL TESTING ONLY - Allow cleartext traffic to local development server -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain>10.0.0.40</domain>
+        <domain>localhost</domain>
+        <domain>10.0.2.2</domain>
     </domain-config>
 </network-security-config>
 

@@ -30,6 +30,7 @@ import androidx.compose.ui.geometry.Offset
 class PredictionActivity : ComponentActivity() {
 
     private lateinit var predictionService: PinPredictionService
+    private lateinit var sensorCollector: SensorDataCollector
 
     // State
     private var showKeypad = mutableStateOf(false)
@@ -46,8 +47,14 @@ class PredictionActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Initialize simplified service
+        // Initialize services
         predictionService = PinPredictionService(this)
+        sensorCollector = SensorDataCollector(this)
+
+        // Set up sensor data callback to stream via WebSocket
+        sensorCollector.onDataCollected = { sensorData ->
+            predictionService.streamSensorSample(sensorData)
+        }
 
         setContent {
             SenseKeyTheme {
@@ -64,7 +71,30 @@ class PredictionActivity : ComponentActivity() {
                     onStartRecording = {
                         hasStartedRecording.value = true
                         isRecording.value = true
-                        predictionService.clearData() // Start fresh
+
+                        // Connect WebSocket first, THEN start sensors
+                        lifecycleScope.launch {
+                            showSendingModal.value = true
+
+                            // Step 1: Connect WebSocket (we don't know actual PIN yet, will send it later)
+                            val connectResult = predictionService.startStreaming("0000")  // Temporary PIN
+
+                            showSendingModal.value = false
+
+                            if (connectResult.isFailure) {
+                                apiResponseMessage.value = "Connection Error: ${connectResult.exceptionOrNull()?.message}"
+                                showResponseModal.value = true
+                                hasStartedRecording.value = false
+                                isRecording.value = false
+                                return@launch
+                            }
+
+                            // Step 2: NOW start sensor collection (WebSocket is ready)
+                            sensorCollector.startRecording(
+                                trialNumber = 1,
+                                targetPin = "0000"  // Dummy target PIN
+                            )
+                        }
                     },
                     onSelectMode = { mode ->
                         pinLength.value = mode
@@ -80,10 +110,15 @@ class PredictionActivity : ComponentActivity() {
                     onOkClick = { }, // Not used in auto-submit flow
                     onDismissResponseModal = {
                         showResponseModal.value = false
-                        // Clean up for next attempt
-                        predictionService.clearData()
+
+                        // Reset all state for next attempt
+                        isRecording.value = false
+                        hasStartedRecording.value = false
                         typedPin.value = ""
                         apiPredictedPin.value = ""
+                        predictionService.clearData()
+
+                        // User must click "Start Recording" again to reconnect WebSocket
                     },
                     onReset = {
                         showKeypad.value = false
@@ -104,21 +139,27 @@ class PredictionActivity : ComponentActivity() {
         // Only record if we are in recording mode and PIN isn't full
         if (!hasStartedRecording.value || !isRecording.value || typedPin.value.length >= pinLength.value) return
 
-        // UPDATED: Capture touch coordinate directly (ignore timestamps)
-        if (touchX != null && touchY != null) {
-            val normalizedX = touchX - 80f
-            val normalizedY = touchY - 1200f
-            predictionService.addTouchData(normalizedX, normalizedY)
-        }
+        // Log button press event to sensor collector
+        sensorCollector.logButtonPress(
+            digit = number,
+            position = typedPin.value.length,
+            touchX = touchX ?: 0f,
+            touchY = touchY ?: 0f
+        )
 
         typedPin.value += number
 
-        // When PIN is complete, send request immediately
+        // When PIN is complete, wait for final motion and request prediction
         if (typedPin.value.length == pinLength.value) {
-            showSendingModal.value = true
-
             lifecycleScope.launch {
-                val result = predictionService.predictPin(typedPin.value)
+                showSendingModal.value = true
+
+                // Step 1: Wait for final motion data
+                kotlinx.coroutines.delay(800)
+                sensorCollector.stopRecording()
+
+                // Step 2: Request prediction from backend (send the actual typed PIN)
+                val result = predictionService.requestPrediction(typedPin.value)
 
                 showSendingModal.value = false
                 result.onSuccess { pin ->
@@ -129,8 +170,16 @@ class PredictionActivity : ComponentActivity() {
                     apiResponseMessage.value = "Error: ${e.message}"
                     showResponseModal.value = true
                 }
+
+                // Clean up WebSocket
+                predictionService.stopStreaming()
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        sensorCollector.cleanup()
     }
 }
 
