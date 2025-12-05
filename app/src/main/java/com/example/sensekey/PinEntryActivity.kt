@@ -145,7 +145,12 @@ fun PinEntryScreen(
     onPinCorrect: () -> Unit
 ) {
     var participantId by remember { mutableStateOf("") }
+    var handMode by remember { mutableStateOf("") }
+
+    // Flow states
     var showParticipantInput by remember { mutableStateOf(true) }
+    var showHandModeInput by remember { mutableStateOf(false) }
+
     var pin by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
     var successMessage by remember { mutableStateOf("") }
@@ -167,17 +172,35 @@ fun PinEntryScreen(
         }
     }
 
-    // Show Participant ID input screen first
+    // 1. Show Participant ID input screen first
     if (showParticipantInput) {
         ParticipantIdInputScreen(
             onContinue = { id ->
                 participantId = id
                 showParticipantInput = false
+                showHandModeInput = true // Go to Hand Mode selection
             }
         )
         return
     }
 
+    // 2. Show Hand Mode selection screen second
+    if (showHandModeInput) {
+        HandModeSelectionScreen(
+            participantId = participantId,
+            onHandModeSelected = { mode ->
+                handMode = mode
+                showHandModeInput = false // Go to KeyPad
+            },
+            onBack = {
+                showHandModeInput = false
+                showParticipantInput = true // Go back to ID input
+            }
+        )
+        return
+    }
+
+    // 3. Main KeyPad Screen
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -208,7 +231,12 @@ fun PinEntryScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "Participant: $participantId",
+                        text = "ID: $participantId",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    Text(
+                        text = "Mode: $handMode",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
@@ -222,16 +250,17 @@ fun PinEntryScreen(
                             fontSize = 11.sp
                         )
                     }
-                    Text(
-                        text = "Trial #$trialNumber",
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
                 }
+
+                Text(
+                    text = "Trial #$trialNumber",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-            // Research Mode UI
+                // Research Mode UI
                 // Target PIN Display
                 Text(
                     text = "Target PIN: ${PinConfig.getCurrentResearchPin()}",
@@ -249,6 +278,8 @@ fun PinEntryScreen(
                             isRecording = true
                             sensorCollector.startRecording(
                                 trialNumber = trialNumber,
+                                participantId = participantId,
+                                handMode = handMode,
                                 targetPin = PinConfig.getCurrentResearchPin()
                             )
                             errorMessage = ""
@@ -340,7 +371,6 @@ fun PinEntryScreen(
                 // Only allow PIN entry if recording and no success message
                 if (PinConfig.RESEARCH_MODE && !isRecording) {
                     android.util.Log.d("PinEntry", "Blocked: Not recording")
-
                     return@NumberPad  // Block input until recording starts
                 }
 
@@ -445,6 +475,85 @@ fun PinEntryScreen(
             },
             modifier = Modifier.padding(bottom = 24.dp)
         )
+    }
+}
+
+@Composable
+fun HandModeSelectionScreen(
+    participantId: String,
+    onHandModeSelected: (String) -> Unit,
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.White)
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // App Title
+        Text(
+            text = "SenseKey",
+            fontSize = 32.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "Participant: $participantId",
+            fontSize = 16.sp,
+            color = Color.Gray
+        )
+
+        Spacer(modifier = Modifier.height(48.dp))
+
+        Text(
+            text = "Select Hand Mode",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.Black
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Hand Mode Buttons
+        val modes = listOf(
+            "Left Hand",
+            "Right Hand",
+            "Both Hands",
+            "Holding Right Typing Left",
+            "Holding Left Typing Right"
+        )
+
+        modes.forEach { mode ->
+            Button(
+                onClick = { onHandModeSelected(mode) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = mode,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        TextButton(onClick = onBack) {
+            Text("Back to ID Entry")
+        }
     }
 }
 
@@ -729,7 +838,7 @@ fun ParticipantIdInputScreen(
             )
         ) {
             Text(
-                text = "Start Data Collection",
+                text = "Next: Hand Mode",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )

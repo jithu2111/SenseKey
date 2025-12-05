@@ -8,6 +8,8 @@ data class SensorData(
     val timeFromStart: Long,          // Time from recording start in milliseconds
     val sessionId: String,            // Unique ID for this PIN entry session
     val trialNumber: Int,             // Trial number in this session
+    val participantId: String,        // Participant ID
+    val handMode: String,             // Hand holding mode (Left, Right, Both, etc.)
     val targetPin: String,            // Target PIN for research mode (what should be entered)
     val pinEntered: String,           // The actual PIN being entered
     val isCorrect: Int,               // 1 if correct, 0 if incorrect
@@ -48,7 +50,7 @@ data class SensorData(
      * Convert to CSV row format
      */
     fun toCsvRow(): String {
-        return "$sessionId,$trialNumber,$targetPin,$pinEntered,$isCorrect,$timestamp,$timeFromStart," +
+        return "$sessionId,$trialNumber,$participantId,$handMode,$targetPin,$pinEntered,$isCorrect,$timestamp,$timeFromStart," +
                 "$accelX,$accelY,$accelZ," +
                 "$gyroX,$gyroY,$gyroZ," +
                 "$rotVectorX,$rotVectorY,$rotVectorZ,$rotVectorScalar," +
@@ -62,7 +64,7 @@ data class SensorData(
          * CSV header row
          */
         fun getCsvHeader(): String {
-            return "session_id,trial_number,target_pin,pin_entered,is_correct,timestamp_ms,time_from_start_ms," +
+            return "session_id,trial_number,participant_id,hand_mode,target_pin,pin_entered,is_correct,timestamp_ms,time_from_start_ms," +
                     "accel_x,accel_y,accel_z," +
                     "gyro_x,gyro_y,gyro_z," +
                     "rot_x,rot_y,rot_z,rot_scalar," +

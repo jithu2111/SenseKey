@@ -46,6 +46,8 @@ class SensorDataCollector(context: Context) : SensorEventListener {
     // Session information
     private var currentSessionId: String = ""
     private var currentTrialNumber: Int = 0
+    private var currentParticipantId: String = ""
+    private var currentHandMode: String = ""
     private var currentTargetPin: String = ""
     private var currentPin: String = ""
 
@@ -73,7 +75,12 @@ class SensorDataCollector(context: Context) : SensorEventListener {
     /**
      * Start recording sensor data
      */
-    fun startRecording(trialNumber: Int = 1, targetPin: String = "") {
+    fun startRecording(
+        trialNumber: Int = 1,
+        participantId: String = "unknown",
+        handMode: String = "unknown",
+        targetPin: String = ""
+    ) {
         if (!areSensorsAvailable()) {
             Log.e(TAG, "Cannot start recording: Missing sensors ${getMissingSensors()}")
             return
@@ -85,6 +92,8 @@ class SensorDataCollector(context: Context) : SensorEventListener {
         buttonPressTimes.clear()  // Reset IKT tracking for new trial
         currentSessionId = UUID.randomUUID().toString()
         currentTrialNumber = trialNumber
+        currentParticipantId = participantId
+        currentHandMode = handMode
         currentTargetPin = targetPin
         currentPin = ""
         sensorDataBuffer.clear()
@@ -103,7 +112,7 @@ class SensorDataCollector(context: Context) : SensorEventListener {
         // Log recording start event
         logEvent("recording_start")
 
-        Log.d(TAG, "Recording started - Session: $currentSessionId, Trial: $currentTrialNumber")
+        Log.d(TAG, "Recording started - Session: $currentSessionId, Hand: $currentHandMode, Trial: $currentTrialNumber")
     }
 
     /**
@@ -211,6 +220,8 @@ class SensorDataCollector(context: Context) : SensorEventListener {
             timeFromStart = now - recordingStartTime,
             sessionId = currentSessionId,
             trialNumber = currentTrialNumber,
+            participantId = currentParticipantId,
+            handMode = currentHandMode,
             targetPin = currentTargetPin,
             pinEntered = currentPin,
             isCorrect = isCorrect,

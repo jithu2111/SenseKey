@@ -20,6 +20,7 @@ class CSVExporter(private val context: Context) {
      * @param data List of sensor data to export
      * @param fileName Optional custom filename (default: auto-generated with timestamp)
      * @param participantId Optional participant ID for filename
+     * @param handMode Optional hand mode for filename
      * @param trialNumber Optional trial number for filename
      * @param targetPin Optional target PIN for filename
      * @param isCorrect Optional flag to indicate if PIN was correct
@@ -29,6 +30,7 @@ class CSVExporter(private val context: Context) {
         data: List<SensorData>,
         fileName: String? = null,
         participantId: String? = null,
+        handMode: String? = null,
         trialNumber: Int? = null,
         targetPin: String? = null,
         isCorrect: Boolean? = null
@@ -39,7 +41,7 @@ class CSVExporter(private val context: Context) {
         }
 
         try {
-            val file = createCSVFile(fileName, participantId, trialNumber, targetPin, isCorrect)
+            val file = createCSVFile(fileName, participantId, handMode, trialNumber, targetPin, isCorrect)
             FileWriter(file).use { writer ->
                 // Write header
                 writer.append(SensorData.getCsvHeader())
@@ -70,6 +72,7 @@ class CSVExporter(private val context: Context) {
     private fun createCSVFile(
         customFileName: String?,
         participantId: String?,
+        handMode: String?,
         trialNumber: Int?,
         targetPin: String?,
         isCorrect: Boolean?
@@ -97,7 +100,11 @@ class CSVExporter(private val context: Context) {
                     false -> "WRONG"
                     null -> "UNKNOWN"
                 }
-                "participant_${participantId}_trial_${trialStr}_pin_${targetPin}_${correctnessStr}_$timestamp.csv"
+
+                // Sanitize hand mode string (remove spaces)
+                val handModeStr = handMode?.replace(" ", "") ?: "UnknownHand"
+
+                "participant_${participantId}_${handModeStr}_trial_${trialStr}_pin_${targetPin}_${correctnessStr}_$timestamp.csv"
             } else {
                 // Fallback to timestamp-only naming
                 "sensekey_data_$timestamp.csv"
